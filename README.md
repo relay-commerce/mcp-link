@@ -48,7 +48,7 @@ go mod download
 
 ```bash
 # Specify port
-go run main.go -port 8080 -host 0.0.0.0
+go run main.go serve --port 8080 --host 0.0.0.0
 ```
 
 
