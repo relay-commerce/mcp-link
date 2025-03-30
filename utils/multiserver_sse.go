@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -66,6 +67,8 @@ type SSEServer struct {
 	sessions        sync.Map
 	srv             *http.Server
 	contextFunc     SSEContextFunc
+	debugMode       bool   // Flag to enable/disable debug logging
+	logPrefix       string // Prefix for log messages
 }
 
 // SSEOption defines a function type for configuring SSEServer
@@ -134,6 +137,20 @@ func WithSSEContextFunc(fn SSEContextFunc) SSEOption {
 	}
 }
 
+// WithDebugMode sets the debug mode for logging
+func WithDebugMode(debug bool) SSEOption {
+	return func(s *SSEServer) {
+		s.debugMode = debug
+	}
+}
+
+// WithLogPrefix sets a custom prefix for log messages
+func WithLogPrefix(prefix string) SSEOption {
+	return func(s *SSEServer) {
+		s.logPrefix = prefix
+	}
+}
+
 // NewSSEServer creates a new SSE server instance with the given MCP server and options.
 func NewSSEServer(opts ...SSEOption) *SSEServer {
 	s := &SSEServer{
@@ -178,6 +195,14 @@ func (s *SSEServer) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+// logMessage logs a message with the server's prefix if set
+func (s *SSEServer) logMessage(format string, v ...interface{}) {
+	if s.logPrefix != "" {
+		format = fmt.Sprintf("[%s] %s", s.logPrefix, format)
+	}
+	log.Printf(format, v...)
+}
+
 // handleSSE handles incoming SSE connection requests.
 // It sets up appropriate headers and creates a new session for the client.
 func (s *SSEServer) handleSSE(mcpServer *server.MCPServer, w http.ResponseWriter, r *http.Request) {
@@ -198,6 +223,8 @@ func (s *SSEServer) handleSSE(mcpServer *server.MCPServer, w http.ResponseWriter
 	}
 
 	sessionID := uuid.New().String()
+	s.logMessage("[CONNECTION] New user connected. Session ID: %s, Remote Address: %s", sessionID, r.RemoteAddr)
+
 	session := &sseSession{
 		writer:              w,
 		flusher:             flusher,
@@ -221,6 +248,7 @@ func (s *SSEServer) handleSSE(mcpServer *server.MCPServer, w http.ResponseWriter
 	s.serversMutex.RUnlock()
 
 	if err := mcpServer.RegisterSession(session); err != nil {
+		s.logMessage("[ERROR] Session registration failed: %v, Session ID: %s", err, sessionID)
 		http.Error(w, fmt.Sprintf("Session registration failed: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -229,6 +257,7 @@ func (s *SSEServer) handleSSE(mcpServer *server.MCPServer, w http.ResponseWriter
 		defer s.serversMutex.Unlock()
 		mcpServer.UnregisterSession(sessionID)
 		s.sessions.Delete(sessionID)
+		s.logMessage("[DISCONNECTION] User disconnected. Session ID: %s", sessionID)
 	}()
 
 	// Start notification handler for this session
@@ -238,6 +267,11 @@ func (s *SSEServer) handleSSE(mcpServer *server.MCPServer, w http.ResponseWriter
 			case notification := <-session.notificationChannel:
 				eventData, err := json.Marshal(notification)
 				if err == nil {
+					if s.debugMode {
+						s.logMessage("[NOTIFICATION] Sending notification to session %s: %s", sessionID, string(eventData))
+					} else {
+						s.logMessage("[NOTIFICATION] Sending notification to session %s", sessionID)
+					}
 					select {
 					case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):
 						// Event queued successfully
@@ -254,6 +288,7 @@ func (s *SSEServer) handleSSE(mcpServer *server.MCPServer, w http.ResponseWriter
 	}()
 
 	messageEndpoint := fmt.Sprintf("%s?sessionId=%s", s.CompleteMessageEndpoint(), sessionID)
+	s.logMessage("[ENDPOINT] Session %s message endpoint: %s", sessionID, messageEndpoint)
 
 	// Send the initial endpoint event
 	fmt.Fprintf(w, "event: endpoint\ndata: %s\r\n\r\n", messageEndpoint)
@@ -267,6 +302,7 @@ func (s *SSEServer) handleSSE(mcpServer *server.MCPServer, w http.ResponseWriter
 			fmt.Fprint(w, event)
 			flusher.Flush()
 		case <-r.Context().Done():
+			s.logMessage("[DISCONNECTION] Client connection terminated. Session ID: %s", sessionID)
 			close(session.done)
 			return
 		}
@@ -287,8 +323,11 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.logMessage("[MESSAGE] Received message for session ID: %s, Remote Address: %s", sessionID, r.RemoteAddr)
+
 	sessionI, ok := s.sessions.Load(sessionID)
 	if !ok {
+		s.logMessage("[ERROR] Invalid session ID: %s", sessionID)
 		s.writeJSONRPCError(w, nil, mcp.INVALID_PARAMS, "Invalid session ID")
 		return
 	}
@@ -308,12 +347,37 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	// Parse message as raw JSON
 	var rawMessage json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&rawMessage); err != nil {
+		s.logMessage("[ERROR] Parse error for session %s: %v", sessionID, err)
 		s.writeJSONRPCError(w, nil, mcp.PARSE_ERROR, "Parse error")
 		return
 	}
 
+	// Log the incoming message (only in debug mode if it contains raw data)
+	if s.debugMode {
+		s.logMessage("[DEBUG][TOOL CALL] Session %s received tool call: %s", sessionID, string(rawMessage))
+	} else {
+		// Extract method name for basic logging without full payload
+		var request map[string]interface{}
+		if err := json.Unmarshal(rawMessage, &request); err == nil {
+			method, _ := request["method"].(string)
+			s.logMessage("[TOOL CALL] Session %s received tool call method: %s", sessionID, method)
+		} else {
+			s.logMessage("[TOOL CALL] Session %s received tool call", sessionID)
+		}
+	}
+
 	// Process message through MCPServer
 	response := server.HandleMessage(ctx, rawMessage)
+
+	// Log the tool response (only in debug mode if it contains raw data)
+	if response != nil {
+		if s.debugMode {
+			respData, _ := json.Marshal(response)
+			s.logMessage("[DEBUG][TOOL RESPONSE] Session %s tool response: %s", sessionID, string(respData))
+		} else {
+			s.logMessage("[TOOL RESPONSE] Session %s received response", sessionID)
+		}
+	}
 
 	// Only send response if there is one (not for notifications)
 	if response != nil {
@@ -323,10 +387,13 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 		select {
 		case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):
 			// Event queued successfully
+			s.logMessage("[EVENT QUEUED] Response queued for session %s", sessionID)
 		case <-session.done:
 			// Session is closed, don't try to queue
+			s.logMessage("[EVENT FAILED] Cannot queue response - session %s is closed", sessionID)
 		default:
 			// Queue is full, could log this
+			s.logMessage("[EVENT FAILED] Cannot queue response - session %s queue is full", sessionID)
 		}
 
 		// Send HTTP response
@@ -335,6 +402,7 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 	} else {
 		// For notifications, just send 202 Accepted with no body
+		s.logMessage("[NOTIFICATION] No response needed for session %s", sessionID)
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
@@ -697,9 +765,12 @@ func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Use exact path matching rather than Contains
 	ssePath := s.CompleteSsePath()
 	if ssePath != "" && path == ssePath {
+		s.logMessage("[REQUEST] SSE connection request from %s", r.RemoteAddr)
+
 		// Parse request parameters
 		params := s.parseRequestParams(r)
 		if params.Error != nil {
+			s.logMessage("[ERROR] Failed to parse request parameters: %v", params.Error)
 			http.Error(w, fmt.Sprintf("Failed to parse request parameters: %v", params.Error), http.StatusInternalServerError)
 			return
 		}
@@ -710,19 +781,32 @@ func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var parser OpenAPIParser
 		var parseErr error
 
+		// Update log prefix based on schema info if not already set
+		if s.logPrefix == "" && params.BaseURL != "" {
+			// Use the baseURL from the schema as the log prefix if not already set
+			baseURLHost, _ := getHostFromURL(params.BaseURL)
+			if baseURLHost != "" {
+				s.logPrefix = baseURLHost
+			}
+		}
+
 		// Check if it looks like YAML or JSON
 		if isYAML(params.RawBytes) {
+			s.logMessage("[PARSER] Parsing YAML OpenAPI schema, size: %d bytes", len(params.RawBytes))
 			parser, parseErr = ParseOpenAPIFromYAML(params.RawBytes)
 		} else {
+			s.logMessage("[PARSER] Parsing JSON OpenAPI schema, size: %d bytes", len(params.RawBytes))
 			parser, parseErr = ParseOpenAPIFromJSON(params.RawBytes)
 		}
 		if parseErr != nil {
+			s.logMessage("[ERROR] Failed to parse OpenAPI schema: %v", parseErr)
 			http.Error(w, fmt.Sprintf("Failed to parse OpenAPI schema: %v", parseErr), http.StatusInternalServerError)
 			return
 		}
 
 		// Apply filters if present
 		if len(params.Filters) > 0 {
+			s.logMessage("[FILTERS] Applying %d filters to API endpoints", len(params.Filters))
 			// Create a filtered parser that wraps the original parser
 			parser = &FilteredOpenAPIParser{
 				BaseParser: parser,
@@ -731,10 +815,28 @@ func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var err error
+		s.logMessage("[SERVER] Creating MCP server with base URL: %s", params.BaseURL)
 		mcpServer, err = NewMCPFromCustomParser(params.BaseURL, params.Headers, parser)
 		if err != nil {
+			s.logMessage("[ERROR] Failed to create MCP server: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to create MCP server: %v", err), http.StatusInternalServerError)
 			return
+		}
+
+		// Log the available API endpoints
+		apis := parser.APIs()
+		s.logMessage("[SERVER] MCP server created with %d API endpoints", len(apis))
+
+		// Only log detailed endpoints in debug mode
+		if s.debugMode {
+			for i, api := range apis {
+				if i < 10 { // Limit logging to first 10 endpoints to avoid flooding logs
+					s.logMessage("[DEBUG][ENDPOINT] %s %s", api.Method, api.Path)
+				} else if i == 10 {
+					s.logMessage("[DEBUG][ENDPOINT] ... and %d more endpoints", len(apis)-10)
+					break
+				}
+			}
 		}
 
 		s.handleSSE(mcpServer, w, r)
@@ -742,10 +844,12 @@ func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	messagePath := s.CompleteMessagePath()
 	if messagePath != "" && path == messagePath {
+		s.logMessage("[REQUEST] Message request from %s to %s", r.RemoteAddr, path)
 		s.handleMessage(w, r)
 		return
 	}
 
+	s.logMessage("[NOT FOUND] Path not found: %s", path)
 	http.NotFound(w, r)
 }
 
@@ -867,4 +971,13 @@ func ShouldIncludePath(path string, method string, filters []PathFilter) bool {
 	}
 
 	return included
+}
+
+// getHostFromURL extracts the host from a URL string
+func getHostFromURL(urlStr string) (string, error) {
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return "", err
+	}
+	return parsedURL.Hostname(), nil
 }
