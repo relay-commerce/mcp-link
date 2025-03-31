@@ -352,58 +352,90 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log the incoming message (only in debug mode if it contains raw data)
-	if s.debugMode {
-		s.logMessage("[DEBUG][TOOL CALL] Session %s received tool call: %s", sessionID, string(rawMessage))
-	} else {
-		// Extract method name for basic logging without full payload
-		var request map[string]interface{}
-		if err := json.Unmarshal(rawMessage, &request); err == nil {
-			method, _ := request["method"].(string)
-			s.logMessage("[TOOL CALL] Session %s received tool call method: %s", sessionID, method)
+	method := ""
+	// Enhanced logging for MCP tool calls
+	var request map[string]interface{}
+	if err := json.Unmarshal(rawMessage, &request); err == nil {
+		method, _ = request["method"].(string)
+		params, hasParams := request["params"]
+
+		// Log method and parameters, but skip detailed params for list methods
+		if method != "tools/list" {
+			if hasParams {
+				// For non-list methods, log detailed parameters
+				paramsJSON, err := json.Marshal(params)
+				if err == nil {
+					s.logMessage("[MCP TOOL CALL] Session %s: Method: %s, Params: %s", sessionID, method, string(paramsJSON))
+				} else {
+					s.logMessage("[MCP TOOL CALL] Session %s: Method: %s, Params: [error marshaling params]", sessionID, method)
+				}
+			} else {
+				s.logMessage("[MCP TOOL CALL] Session %s: Method: %s, Params: none", sessionID, method)
+			}
 		} else {
-			s.logMessage("[TOOL CALL] Session %s received tool call", sessionID)
+			// Fallback for old behavior if JSON parsing fails
+			if s.debugMode {
+				s.logMessage("[DEBUG][TOOL CALL] Session %s received tool call: %s", sessionID, string(rawMessage))
+			} else {
+				s.logMessage("[TOOL CALL] Session %s received tool call", sessionID)
+			}
 		}
-	}
 
-	// Process message through MCPServer
-	response := server.HandleMessage(ctx, rawMessage)
+		// Process message through MCPServer
+		response := server.HandleMessage(ctx, rawMessage)
 
-	// Log the tool response (only in debug mode if it contains raw data)
-	if response != nil {
-		if s.debugMode {
+		// Log the tool response (only in debug mode if it contains raw data)
+		if response != nil {
 			respData, _ := json.Marshal(response)
-			s.logMessage("[DEBUG][TOOL RESPONSE] Session %s tool response: %s", sessionID, string(respData))
+
+			// Extract result if present
+			respMap := make(map[string]interface{})
+			if err := json.Unmarshal(respData, &respMap); err == nil {
+				if result, hasResult := respMap["result"]; hasResult && result != nil {
+					if method != "tools/list" {
+						s.logMessage("[MCP TOOL RESPONSE] Session %s: Method response", sessionID)
+					}
+				} else if errObj, hasError := respMap["error"]; hasError && errObj != nil {
+					s.logMessage("[MCP TOOL RESPONSE] Session %s: Method responded with error", sessionID)
+				} else {
+					s.logMessage("[MCP TOOL RESPONSE] Session %s: Method responded", sessionID)
+				}
+			} else {
+				// Fallback to old behavior if JSON parsing fails
+				if s.debugMode {
+					s.logMessage("[DEBUG][TOOL RESPONSE] Session %s tool response: %s", sessionID, string(respData))
+				} else {
+					s.logMessage("[TOOL RESPONSE] Session %s received response", sessionID)
+				}
+			}
+		}
+
+		// Only send response if there is one (not for notifications)
+		if response != nil {
+			eventData, _ := json.Marshal(response)
+
+			// Queue the event for sending via SSE
+			select {
+			case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):
+				// Event queued successfully
+				s.logMessage("[EVENT QUEUED] Response queued for session %s", sessionID)
+			case <-session.done:
+				// Session is closed, don't try to queue
+				s.logMessage("[EVENT FAILED] Cannot queue response - session %s is closed", sessionID)
+			default:
+				// Queue is full, could log this
+				s.logMessage("[EVENT FAILED] Cannot queue response - session %s queue is full", sessionID)
+			}
+
+			// Send HTTP response
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			json.NewEncoder(w).Encode(response)
 		} else {
-			s.logMessage("[TOOL RESPONSE] Session %s received response", sessionID)
+			// For notifications, just send 202 Accepted with no body
+			s.logMessage("[NOTIFICATION] No response needed for session %s", sessionID)
+			w.WriteHeader(http.StatusAccepted)
 		}
-	}
-
-	// Only send response if there is one (not for notifications)
-	if response != nil {
-		eventData, _ := json.Marshal(response)
-
-		// Queue the event for sending via SSE
-		select {
-		case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):
-			// Event queued successfully
-			s.logMessage("[EVENT QUEUED] Response queued for session %s", sessionID)
-		case <-session.done:
-			// Session is closed, don't try to queue
-			s.logMessage("[EVENT FAILED] Cannot queue response - session %s is closed", sessionID)
-		default:
-			// Queue is full, could log this
-			s.logMessage("[EVENT FAILED] Cannot queue response - session %s queue is full", sessionID)
-		}
-
-		// Send HTTP response
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(response)
-	} else {
-		// For notifications, just send 202 Accepted with no body
-		s.logMessage("[NOTIFICATION] No response needed for session %s", sessionID)
-		w.WriteHeader(http.StatusAccepted)
 	}
 }
 
@@ -447,6 +479,7 @@ func (s *SSEServer) SendEventToSession(
 		return fmt.Errorf("event queue full")
 	}
 }
+
 func (s *SSEServer) GetUrlPath(input string) (string, error) {
 	parse, err := url.Parse(input)
 	if err != nil {
