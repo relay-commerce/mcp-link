@@ -1,5 +1,6 @@
-# MCP Link - Seamlessly Integrate Any API with AI Agents
+# MCP Link - Convert Any OpenAPI V3 API to MCP Server
 
+[![Join our Discord](https://img.shields.io/discord/1234567890?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/qkzfbqdSa9)
 
 ## 🧩 Architecture
 
