@@ -99,6 +99,9 @@ func NewToolHandler(method string, url string, extraHeaders map[string]string) f
 				switch v := paramValue.(type) {
 				case string:
 					strValue = v
+				case nil:
+					// Use empty string for nil path parameters
+					strValue = ""
 				default:
 					// Convert other types to string
 					strValue = fmt.Sprintf("%v", v)
@@ -126,6 +129,8 @@ func NewToolHandler(method string, url string, extraHeaders map[string]string) f
 				switch v := paramValue.(type) {
 				case string:
 					strValue = v
+				case nil:
+					continue
 				default:
 					// Convert other types to string
 					strValue = fmt.Sprintf("%v", v)
