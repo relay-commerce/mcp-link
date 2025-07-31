@@ -1,0 +1,5 @@
+# Name of your application. Used to uniquely configure containers.
+service: mcp-link
+
+# Name of the container image.
+image: mcp-link
