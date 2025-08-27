@@ -13,7 +13,7 @@ import (
 )
 
 func Test_ParseYamlToJson(t *testing.T) {
-	b, err := os.ReadFile("../example-fal-text2image.yaml")
+	b, err := os.ReadFile("../examples/fal-text2image.yaml")
 	if err != nil {
 		t.Fatalf("Error reading YAML file: %v", err)
 	}
