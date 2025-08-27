@@ -929,13 +929,14 @@ func isYAML(data []byte) bool {
 		strings.HasPrefix(strings.TrimSpace(s), "swagger:")
 }
 
-func createResponse(id interface{}, result interface{}) mcp.JSONRPCMessage {
-	return mcp.JSONRPCResponse{
-		JSONRPC: mcp.JSONRPC_VERSION,
-		ID:      id,
-		Result:  result,
-	}
-}
+// Unused function is commented
+// func createResponse(id interface{}, result interface{}) mcp.JSONRPCMessage {
+// 	return mcp.JSONRPCResponse{
+// 		JSONRPC: mcp.JSONRPC_VERSION,
+// 		ID:      id,
+// 		Result:  result,
+// 	}
+// }
 
 func createErrorResponse(
 	id interface{},
