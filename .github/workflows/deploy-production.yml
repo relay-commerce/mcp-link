@@ -1,0 +1,64 @@
+name: Deploy to Production
+on: workflow_dispatch
+
+jobs:
+  deploy-production:
+    if: |
+      github.ref == 'refs/heads/main' &&
+      github.repository_owner == 'relay-commerce'
+    runs-on: ubuntu-22.04
+    environment:
+      name: production
+      url: https://mcp-link.platform.relaycommerce.io
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-2
+
+    - name: Install AWS SSM plugin
+      run: |
+        curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+        sudo dpkg -i session-manager-plugin.deb
+
+    - name: Configure SSH for SSM
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.PRODUCTION_SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        echo "Host i-* mi-*
+          ProxyCommand sh -c \"aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters 'portNumber=%p'\"
+          User ubuntu
+          IdentityFile ~/.ssh/id_rsa
+          StrictHostKeyChecking no
+          UserKnownHostsFile=/dev/null" > ~/.ssh/config
+        chmod 600 ~/.ssh/config
+
+    - name: Get ECR password
+      id: ecr-password
+      run: |
+        echo "registry_password=$(aws ecr get-login-password --region us-east-2)" >> $GITHUB_OUTPUT
+
+    - name: Install Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.3'
+
+    - name: Install Kamal
+      run: gem install kamal -v 2.5.2
+
+    - name: Export deployment secrets to environment
+      shell: bash
+      env:
+        KAMAL_REGISTRY_PASSWORD: ${{ steps.ecr-password.outputs.registry_password }}
+      run: |
+        echo "KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD" >> "$GITHUB_ENV"
+
+    - name: Deploy to production
+      run: kamal deploy -d production
+      env:
+        AWS_SSM_ENABLED: 1
