@@ -13,7 +13,9 @@ func BuildMCPProperties(api APIEndpoint) (map[string]interface{}, map[string]int
 		case "query":
 			child := map[string]interface{}{}
 			if param.Schema != nil {
-				child["type"] = param.Schema.Type
+				if param.Schema.Type != "" {
+					child["type"] = param.Schema.Type
+				}
 				if param.Schema.Enum != nil {
 					child["enum"] = param.Schema.Enum
 				}
@@ -37,7 +39,9 @@ func BuildMCPProperties(api APIEndpoint) (map[string]interface{}, map[string]int
 		case "path":
 			child := map[string]interface{}{}
 			if param.Schema != nil {
-				child["type"] = param.Schema.Type
+				if param.Schema.Type != "" {
+					child["type"] = param.Schema.Type
+				}
 				if param.Schema.Enum != nil {
 					child["enum"] = param.Schema.Enum
 				}
@@ -63,7 +67,9 @@ func BuildMCPProperties(api APIEndpoint) (map[string]interface{}, map[string]int
 			if mediaType.Schema != nil && mediaType.Schema.Properties != nil {
 				for propName, propSchema := range mediaType.Schema.Properties {
 					child := map[string]interface{}{}
-					child["type"] = propSchema.Type
+					if propSchema.Type != "" {
+						child["type"] = propSchema.Type
+					}
 					if propSchema.Enum != nil {
 						child["enum"] = propSchema.Enum
 					}
