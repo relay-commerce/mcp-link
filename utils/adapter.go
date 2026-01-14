@@ -215,8 +215,7 @@ func NewMCPFromCustomParser(baseURL string, extraHeaders map[string]string, pars
 		}
 
 		// Add parameters
-		// paramsOpts := mcp.WithObject("searchParams", mcp.Description("url parameters for the tool"))
-		query_props, path_props, _ := BuildMCPProperties(api)
+		query_props, path_props, body_props := BuildMCPProperties(api)
 
 		if len(query_props) > 0 {
 			opts = append(opts, mcp.WithObject("searchParams", mcp.Description("url parameters for the tool"), mcp.Properties(query_props)))
@@ -224,11 +223,8 @@ func NewMCPFromCustomParser(baseURL string, extraHeaders map[string]string, pars
 		if len(path_props) > 0 {
 			opts = append(opts, mcp.WithObject("pathNames", mcp.Description("path parameters for the tool"), mcp.Properties(path_props)))
 		}
-
-		// Handle request body parameters if present
-		_, _, props := BuildMCPProperties(api)
-		if len(props) > 0 {
-			opts = append(opts, mcp.WithObject("requestBody", mcp.Description("request body for the tool"), mcp.Properties(props)))
+		if len(body_props) > 0 {
+			opts = append(opts, mcp.WithObject("requestBody", mcp.Description("request body for the tool"), mcp.Properties(body_props)))
 		}
 
 		// Create the tool and handler

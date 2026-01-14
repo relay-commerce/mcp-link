@@ -34,6 +34,15 @@ func BuildMCPProperties(api APIEndpoint) (map[string]interface{}, map[string]int
 				if param.Schema.Properties != nil {
 					child["properties"] = param.Schema.Properties
 				}
+				if len(param.Schema.OneOf) > 0 {
+					child["oneOf"] = param.Schema.OneOf
+				}
+				if len(param.Schema.AnyOf) > 0 {
+					child["anyOf"] = param.Schema.AnyOf
+				}
+				if len(param.Schema.AllOf) > 0 {
+					child["allOf"] = param.Schema.AllOf
+				}
 			}
 			queryProps[param.Name] = child
 		case "path":
@@ -56,6 +65,15 @@ func BuildMCPProperties(api APIEndpoint) (map[string]interface{}, map[string]int
 				}
 				if param.Schema.Items != nil {
 					child["items"] = param.Schema.Items
+				}
+				if len(param.Schema.OneOf) > 0 {
+					child["oneOf"] = param.Schema.OneOf
+				}
+				if len(param.Schema.AnyOf) > 0 {
+					child["anyOf"] = param.Schema.AnyOf
+				}
+				if len(param.Schema.AllOf) > 0 {
+					child["allOf"] = param.Schema.AllOf
 				}
 			}
 			pathProps[param.Name] = child
@@ -87,6 +105,15 @@ func BuildMCPProperties(api APIEndpoint) (map[string]interface{}, map[string]int
 					}
 					if propSchema.Properties != nil {
 						child["properties"] = propSchema.Properties
+					}
+					if len(propSchema.OneOf) > 0 {
+						child["oneOf"] = propSchema.OneOf
+					}
+					if len(propSchema.AnyOf) > 0 {
+						child["anyOf"] = propSchema.AnyOf
+					}
+					if len(propSchema.AllOf) > 0 {
+						child["allOf"] = propSchema.AllOf
 					}
 					bodyProps[propName] = child
 				}
