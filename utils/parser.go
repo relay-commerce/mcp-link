@@ -80,6 +80,9 @@ type Schema struct {
 	Items       *Schema           `json:"items,omitempty"`
 	Required    []string          `json:"required,omitempty"`
 	Ref         string
+	OneOf       []Schema `json:"oneOf,omitempty"`
+	AnyOf       []Schema `json:"anyOf,omitempty"`
+	AllOf       []Schema `json:"allOf,omitempty"`
 }
 
 // SimpleOpenAPIParser is a simple parser for OpenAPI specifications
@@ -312,10 +315,37 @@ func (p *SimpleOpenAPIParser) APIs() []APIEndpoint {
 	return endpoints
 }
 
-// parseSchema parses a JSON schema object
+// maxSchemaDepth is the maximum depth for parsing nested schemas
+// This prevents stack overflow from recursive schemas
+const maxSchemaDepth = 5
+
+// parseSchema parses a JSON schema object (public wrapper)
 func (p *SimpleOpenAPIParser) parseSchema(schemaObj map[string]interface{}) Schema {
+	return p.parseSchemaWithDepth(schemaObj, 0)
+}
+
+// parseSchemaWithDepth parses a JSON schema object with depth tracking
+func (p *SimpleOpenAPIParser) parseSchemaWithDepth(schemaObj map[string]interface{}, depth int) Schema {
 	schema := Schema{
 		Properties: make(map[string]Schema),
+	}
+
+	// Stop parsing if max depth exceeded
+	if depth > maxSchemaDepth {
+		schema.Description = "(schema truncated - max depth exceeded)"
+		return schema
+	}
+
+	// Handle $ref - resolve reference from components/schemas
+	if ref, ok := schemaObj["$ref"].(string); ok {
+		resolved := p.resolveRef(ref)
+		if resolved != nil {
+			return p.parseSchemaWithDepth(resolved, depth+1)
+		}
+		// If ref couldn't be resolved, note it in description
+		schema.Ref = ref
+		schema.Description = fmt.Sprintf("(unresolved reference: %s)", ref)
+		return schema
 	}
 
 	if t, ok := schemaObj["type"].(string); ok {
@@ -350,7 +380,7 @@ func (p *SimpleOpenAPIParser) parseSchema(schemaObj map[string]interface{}) Sche
 	if properties, ok := schemaObj["properties"].(map[string]interface{}); ok {
 		for propName, propObj := range properties {
 			if propMap, ok := propObj.(map[string]interface{}); ok {
-				propSchema := p.parseSchema(propMap)
+				propSchema := p.parseSchemaWithDepth(propMap, depth+1)
 				schema.Properties[propName] = propSchema
 			}
 		}
@@ -358,8 +388,38 @@ func (p *SimpleOpenAPIParser) parseSchema(schemaObj map[string]interface{}) Sche
 
 	// Handle items for array type
 	if items, ok := schemaObj["items"].(map[string]interface{}); ok {
-		itemsSchema := p.parseSchema(items)
+		itemsSchema := p.parseSchemaWithDepth(items, depth+1)
 		schema.Items = &itemsSchema
+	}
+
+	// Handle oneOf - parse each variant schema
+	if oneOf, ok := schemaObj["oneOf"].([]interface{}); ok {
+		for _, variant := range oneOf {
+			if variantMap, ok := variant.(map[string]interface{}); ok {
+				variantSchema := p.parseSchemaWithDepth(variantMap, depth+1)
+				schema.OneOf = append(schema.OneOf, variantSchema)
+			}
+		}
+	}
+
+	// Handle anyOf - parse each variant schema
+	if anyOf, ok := schemaObj["anyOf"].([]interface{}); ok {
+		for _, variant := range anyOf {
+			if variantMap, ok := variant.(map[string]interface{}); ok {
+				variantSchema := p.parseSchemaWithDepth(variantMap, depth+1)
+				schema.AnyOf = append(schema.AnyOf, variantSchema)
+			}
+		}
+	}
+
+	// Handle allOf - parse each variant schema
+	if allOf, ok := schemaObj["allOf"].([]interface{}); ok {
+		for _, variant := range allOf {
+			if variantMap, ok := variant.(map[string]interface{}); ok {
+				variantSchema := p.parseSchemaWithDepth(variantMap, depth+1)
+				schema.AllOf = append(schema.AllOf, variantSchema)
+			}
+		}
 	}
 
 	return schema
@@ -370,6 +430,34 @@ func isHTTPMethod(method string) bool {
 	return method == "get" || method == "post" || method == "put" ||
 		method == "delete" || method == "options" || method == "head" ||
 		method == "patch" || method == "trace"
+}
+
+// resolveRef resolves a $ref pointer to the actual schema object
+// Supports refs like "#/components/schemas/MySchema"
+func (p *SimpleOpenAPIParser) resolveRef(ref string) map[string]interface{} {
+	if !strings.HasPrefix(ref, "#/") {
+		return nil // Only support local references
+	}
+
+	// Split the path: "#/components/schemas/MySchema" -> ["components", "schemas", "MySchema"]
+	parts := strings.Split(strings.TrimPrefix(ref, "#/"), "/")
+
+	current := p.document
+	for _, part := range parts {
+		if current == nil {
+			return nil
+		}
+		next, ok := current[part]
+		if !ok {
+			return nil
+		}
+		current, ok = next.(map[string]interface{})
+		if !ok {
+			return nil
+		}
+	}
+
+	return current
 }
 
 // ParseOpenAPIFromYAML parses OpenAPI specification from YAML format

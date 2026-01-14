@@ -241,6 +241,15 @@ func NewMCPFromCustomParser(baseURL string, extraHeaders map[string]string, pars
 				if param.Schema.Properties != nil {
 					query_props["properties"] = param.Schema.Properties
 				}
+				if len(param.Schema.OneOf) > 0 {
+					query_props["oneOf"] = param.Schema.OneOf
+				}
+				if len(param.Schema.AnyOf) > 0 {
+					query_props["anyOf"] = param.Schema.AnyOf
+				}
+				if len(param.Schema.AllOf) > 0 {
+					query_props["allOf"] = param.Schema.AllOf
+				}
 			} else if param.In == "path" {
 				path_props[param.Name] = param
 				path_props["type"] = param.Schema.Type
@@ -258,6 +267,15 @@ func NewMCPFromCustomParser(baseURL string, extraHeaders map[string]string, pars
 				}
 				if param.Schema.Items != nil {
 					path_props["items"] = param.Schema.Items
+				}
+				if len(param.Schema.OneOf) > 0 {
+					path_props["oneOf"] = param.Schema.OneOf
+				}
+				if len(param.Schema.AnyOf) > 0 {
+					path_props["anyOf"] = param.Schema.AnyOf
+				}
+				if len(param.Schema.AllOf) > 0 {
+					path_props["allOf"] = param.Schema.AllOf
 				}
 			}
 		}
@@ -294,6 +312,15 @@ func NewMCPFromCustomParser(baseURL string, extraHeaders map[string]string, pars
 						}
 						if propSchema.Properties != nil {
 							props["properties"] = propSchema.Properties
+						}
+						if len(propSchema.OneOf) > 0 {
+							props["oneOf"] = propSchema.OneOf
+						}
+						if len(propSchema.AnyOf) > 0 {
+							props["anyOf"] = propSchema.AnyOf
+						}
+						if len(propSchema.AllOf) > 0 {
+							props["allOf"] = propSchema.AllOf
 						}
 					}
 				}
