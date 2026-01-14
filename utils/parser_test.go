@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -422,6 +423,29 @@ components:
 	// The recursive ref should be resolved
 	if childrenSchema.Items.Type != "object" {
 		t.Errorf("Expected children items type to be 'object', got '%s'", childrenSchema.Items.Type)
+	}
+}
+
+func Test_Schema_JSON_OmitsEmptyFields(t *testing.T) {
+	schema := Schema{
+		Type:        "string",
+		Description: "A test field",
+		// Ref, OneOf, AnyOf, AllOf, etc. are all empty
+	}
+
+	output, err := json.Marshal(schema)
+	if err != nil {
+		t.Fatalf("Failed to marshal schema: %v", err)
+	}
+
+	jsonStr := string(output)
+
+	// These empty fields should not appear in output
+	unwantedFields := []string{`"$ref"`, `"Ref"`, `"oneOf"`, `"anyOf"`, `"allOf"`, `"properties"`, `"items"`}
+	for _, field := range unwantedFields {
+		if strings.Contains(jsonStr, field) {
+			t.Errorf("JSON output should not contain %s when empty, got: %s", field, jsonStr)
+		}
 	}
 }
 
