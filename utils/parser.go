@@ -317,7 +317,7 @@ func (p *SimpleOpenAPIParser) APIs() []APIEndpoint {
 
 // maxSchemaDepth is the maximum depth for parsing nested schemas
 // This prevents stack overflow from recursive schemas
-const maxSchemaDepth = 5
+const maxSchemaDepth = 10
 
 // parseSchema parses a JSON schema object (public wrapper)
 func (p *SimpleOpenAPIParser) parseSchema(schemaObj map[string]interface{}) Schema {
@@ -326,9 +326,7 @@ func (p *SimpleOpenAPIParser) parseSchema(schemaObj map[string]interface{}) Sche
 
 // parseSchemaWithDepth parses a JSON schema object with depth tracking
 func (p *SimpleOpenAPIParser) parseSchemaWithDepth(schemaObj map[string]interface{}, depth int) Schema {
-	schema := Schema{
-		Properties: make(map[string]Schema),
-	}
+	schema := Schema{}
 
 	// Stop parsing if max depth exceeded
 	if depth > maxSchemaDepth {
@@ -377,7 +375,8 @@ func (p *SimpleOpenAPIParser) parseSchemaWithDepth(schemaObj map[string]interfac
 	}
 
 	// Handle properties
-	if properties, ok := schemaObj["properties"].(map[string]interface{}); ok {
+	if properties, ok := schemaObj["properties"].(map[string]interface{}); ok && len(properties) > 0 {
+		schema.Properties = make(map[string]Schema)
 		for propName, propObj := range properties {
 			if propMap, ok := propObj.(map[string]interface{}); ok {
 				propSchema := p.parseSchemaWithDepth(propMap, depth+1)
