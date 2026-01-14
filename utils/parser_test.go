@@ -133,8 +133,6 @@ paths:
 	if imageSourceSchema.Description != "Image URL" {
 		t.Errorf("Expected image_source description to be 'Image URL', got '%s'", imageSourceSchema.Description)
 	}
-
-	t.Log("oneOf parsing test passed!")
 }
 
 func Test_ParseSchema_AnyOf(t *testing.T) {
@@ -179,8 +177,6 @@ paths:
 	if param.Schema.AnyOf[1].Type != "integer" {
 		t.Errorf("Expected second anyOf type to be 'integer', got '%s'", param.Schema.AnyOf[1].Type)
 	}
-
-	t.Log("anyOf parsing test passed!")
 }
 
 func Test_ParseSchema_AllOf(t *testing.T) {
@@ -233,8 +229,6 @@ paths:
 	if _, ok := param.Schema.AllOf[1].Properties["name"]; !ok {
 		t.Error("Expected second allOf to have 'name' property")
 	}
-
-	t.Log("allOf parsing test passed!")
 }
 
 func Test_ParseSchema_MaxDepth(t *testing.T) {
@@ -337,10 +331,8 @@ paths:
 	}
 
 	if !foundTruncation {
-		t.Log("Warning: Did not find truncation message, but parsing completed without crash")
+		t.Errorf("Expected truncation message at depth > %d, but reached depth %d without finding it", maxSchemaDepth, depth)
 	}
-
-	t.Logf("Max depth safeguard test passed! Reached depth %d", depth)
 }
 
 func Test_ParseSchema_RefResolution(t *testing.T) {
@@ -431,8 +423,6 @@ components:
 	if childrenSchema.Items.Type != "object" {
 		t.Errorf("Expected children items type to be 'object', got '%s'", childrenSchema.Items.Type)
 	}
-
-	t.Log("$ref resolution test passed!")
 }
 
 func Test_ParseYamlToJson(t *testing.T) {
