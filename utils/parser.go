@@ -79,10 +79,10 @@ type Schema struct {
 	Properties  map[string]Schema `json:"properties,omitempty"`
 	Items       *Schema           `json:"items,omitempty"`
 	Required    []string          `json:"required,omitempty"`
-	Ref         string   `json:"$ref,omitempty"`
-	OneOf       []Schema `json:"oneOf,omitempty"`
-	AnyOf       []Schema `json:"anyOf,omitempty"`
-	AllOf       []Schema `json:"allOf,omitempty"`
+	Ref         string            `json:"$ref,omitempty"`
+	OneOf       []Schema          `json:"oneOf,omitempty"`
+	AnyOf       []Schema          `json:"anyOf,omitempty"`
+	AllOf       []Schema          `json:"allOf,omitempty"`
 }
 
 // SimpleOpenAPIParser is a simple parser for OpenAPI specifications
