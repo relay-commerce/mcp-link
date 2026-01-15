@@ -187,6 +187,9 @@ func NewToolHandler(method string, url string, extraHeaders map[string]string) f
 		// return mcp.NewToolResultImage("", base64.StdEncoding.EncodeToString(body), resp.Header.Get("Content-Type")), nil
 		// }
 
+		if resp.StatusCode >= 400 {
+			return mcp.NewToolResultText(fmt.Sprintf("[HTTP %d]\n%s", resp.StatusCode, string(body))), nil
+		}
 		return mcp.NewToolResultText(string(body)), nil
 	}
 }
