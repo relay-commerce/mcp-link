@@ -145,4 +145,82 @@ func TestBuildMCPProperties_JSONSchema2020Validation(t *testing.T) {
 	require.NoError(t, validate(wrap(bodyProps)), "bodyProps should be a valid JSON Schema object")
 }
 
-// no-op
+func TestBuildToolName_WithOperationID_NoPrefix(t *testing.T) {
+	api := APIEndpoint{
+		Path:        "/users/{id}",
+		Method:      "GET",
+		OperationID: "getUser",
+	}
+
+	name := buildToolName(api, "")
+	require.Equal(t, "getUser", name)
+}
+
+func TestBuildToolName_WithOperationID_WithPrefix(t *testing.T) {
+	api := APIEndpoint{
+		Path:        "/users/{id}",
+		Method:      "GET",
+		OperationID: "getUser",
+	}
+
+	name := buildToolName(api, "myapi")
+	require.Equal(t, "myapi_getUser", name)
+}
+
+func TestBuildToolName_NoOperationID_NoPrefix(t *testing.T) {
+	api := APIEndpoint{
+		Path:   "/users/{id}",
+		Method: "GET",
+	}
+
+	name := buildToolName(api, "")
+	require.Equal(t, "get_users_id", name)
+}
+
+func TestBuildToolName_NoOperationID_WithPrefix(t *testing.T) {
+	api := APIEndpoint{
+		Path:   "/users/{id}",
+		Method: "POST",
+	}
+
+	name := buildToolName(api, "shop")
+	require.Equal(t, "shop_post_users_id", name)
+}
+
+func TestBuildToolName_ComplexOperationID(t *testing.T) {
+	api := APIEndpoint{
+		Path:        "/store_data/store_data",
+		Method:      "GET",
+		OperationID: "getStoreData",
+	}
+
+	// Without prefix - should use operationId directly (case preserved)
+	name := buildToolName(api, "")
+	require.Equal(t, "getStoreData", name)
+
+	// With prefix
+	nameWithPrefix := buildToolName(api, "sr")
+	require.Equal(t, "sr_getStoreData", nameWithPrefix)
+}
+
+func TestBuildToolName_SpecialCharactersInPath(t *testing.T) {
+	api := APIEndpoint{
+		Path:   "/api/v1/users/{user_id}/orders/{order_id}",
+		Method: "DELETE",
+	}
+
+	name := buildToolName(api, "")
+	require.Equal(t, "delete_api_v1_users_user_id_orders_order_id", name)
+}
+
+func TestBuildToolName_PrefixWithSpecialChars(t *testing.T) {
+	api := APIEndpoint{
+		Path:        "/test",
+		Method:      "GET",
+		OperationID: "testOp",
+	}
+
+	// Prefix with special characters should be sanitized, case preserved
+	name := buildToolName(api, "my-api")
+	require.Equal(t, "my_api_testOp", name)
+}

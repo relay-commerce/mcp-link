@@ -512,12 +512,13 @@ func (s *SSEServer) CompleteMessagePath() string {
 
 // RequestParams holds the parameters extracted from the request URL
 type RequestParams struct {
-	SchemaURL string            `json:"s"`
-	BaseURL   string            `json:"u"`
-	Headers   map[string]string `json:"h"`
-	RawBytes  []byte            `json:"b"`
-	Filters   []PathFilter      `json:"f"`
-	Error     error
+	SchemaURL  string            `json:"s"`
+	BaseURL    string            `json:"u"`
+	Headers    map[string]string `json:"h"`
+	RawBytes   []byte            `json:"b"`
+	Filters    []PathFilter      `json:"f"`
+	ToolPrefix string            `json:"p"`
+	Error      error
 }
 
 // PathFilter defines a filter to include or exclude API paths
@@ -741,6 +742,11 @@ func (s *SSEServer) parseRequestParams(r *http.Request) RequestParams {
 			dsl := ParseFilterDSL(filterDSL)
 			params.Filters = append(params.Filters, dsl.ToPathFilters()...)
 		}
+
+		// Parse tool prefix from p parameter
+		if toolPrefix, ok := decodedParams["p"].(string); ok {
+			params.ToolPrefix = toolPrefix
+		}
 	} else {
 		// Traditional parameter parsing
 		params.SchemaURL = query.Get("s")
@@ -762,6 +768,9 @@ func (s *SSEServer) parseRequestParams(r *http.Request) RequestParams {
 				params.Filters = append(params.Filters, dsl.ToPathFilters()...)
 			}
 		}
+
+		// Parse tool prefix from p parameter
+		params.ToolPrefix = query.Get("p")
 	}
 
 	// Load schema content if provided
@@ -856,8 +865,8 @@ func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var err error
-		s.logMessage("[SERVER] Creating MCP server with base URL: %s", params.BaseURL)
-		mcpServer, err = NewMCPFromCustomParser(params.BaseURL, params.Headers, parser)
+		s.logMessage("[SERVER] Creating MCP server with base URL: %s, tool prefix: %q", params.BaseURL, params.ToolPrefix)
+		mcpServer, err = NewMCPFromCustomParser(params.BaseURL, params.Headers, parser, params.ToolPrefix)
 		if err != nil {
 			s.logMessage("[ERROR] Failed to create MCP server: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to create MCP server: %v", err), http.StatusInternalServerError)
