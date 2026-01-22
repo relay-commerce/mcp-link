@@ -224,3 +224,52 @@ func TestBuildToolName_PrefixWithSpecialChars(t *testing.T) {
 	name := buildToolName(api, "my-api")
 	require.Equal(t, "my_api_testOp", name)
 }
+
+func TestBuildMCPProperties_DescriptionPriority(t *testing.T) {
+	api := APIEndpoint{
+		Parameters: []Parameter{
+			{
+				Name:        "id",
+				In:          "path",
+				Description: "The unique identifier of the mailing.",
+				Schema: &Schema{
+					Type: "string",
+				},
+			},
+			{
+				Name:        "format",
+				In:          "query",
+				Description: "Output format for the response.",
+				Schema: &Schema{
+					Type:        "string",
+					Description: "A string value.",
+				},
+			},
+			{
+				Name: "limit",
+				In:   "query",
+				Schema: &Schema{
+					Type:        "integer",
+					Description: "Maximum number of results.",
+				},
+			},
+		},
+	}
+
+	queryProps, pathProps, _ := BuildMCPProperties(api)
+
+	// Path param: parameter-level description should be used (schema has none)
+	idChild := pathProps["id"].(map[string]interface{})
+	require.Equal(t, "string", idChild["type"])
+	require.Equal(t, "The unique identifier of the mailing.", idChild["description"])
+
+	// Query param: parameter-level description takes priority over schema-level
+	formatChild := queryProps["format"].(map[string]interface{})
+	require.Equal(t, "string", formatChild["type"])
+	require.Equal(t, "Output format for the response.", formatChild["description"])
+
+	// Query param: schema-level description used as fallback when parameter-level is empty
+	limitChild := queryProps["limit"].(map[string]interface{})
+	require.Equal(t, "integer", limitChild["type"])
+	require.Equal(t, "Maximum number of results.", limitChild["description"])
+}

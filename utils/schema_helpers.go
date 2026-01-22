@@ -25,7 +25,9 @@ func BuildMCPProperties(api APIEndpoint) (map[string]interface{}, map[string]int
 				if param.Schema.Default != nil {
 					child["default"] = param.Schema.Default
 				}
-				if param.Schema.Description != "" {
+				if param.Description != "" {
+					child["description"] = param.Description
+				} else if param.Schema.Description != "" {
 					child["description"] = param.Schema.Description
 				}
 				if param.Schema.Items != nil {
@@ -60,7 +62,9 @@ func BuildMCPProperties(api APIEndpoint) (map[string]interface{}, map[string]int
 				if param.Schema.Default != nil {
 					child["default"] = param.Schema.Default
 				}
-				if param.Schema.Description != "" {
+				if param.Description != "" {
+					child["description"] = param.Description
+				} else if param.Schema.Description != "" {
 					child["description"] = param.Schema.Description
 				}
 				if param.Schema.Items != nil {
