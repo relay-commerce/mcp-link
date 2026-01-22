@@ -48,6 +48,21 @@ func sanitizeToolName(name string) string {
 	return s
 }
 
+// joinWithAnd joins strings with commas and "and" for proper grammar
+// e.g., ["A"] -> "A", ["A", "B"] -> "A and B", ["A", "B", "C"] -> "A, B, and C"
+func joinWithAnd(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	case 2:
+		return items[0] + " and " + items[1]
+	default:
+		return strings.Join(items[:len(items)-1], ", ") + ", and " + items[len(items)-1]
+	}
+}
+
 // buildToolName creates a tool name from the API endpoint
 // Priority: operationId if available, otherwise method_path
 // Prefix is prepended if provided
@@ -234,13 +249,29 @@ func NewMCPFromCustomParser(baseURL string, extraHeaders map[string]string, pars
 		// Create tool name using operationId or method_path with optional prefix
 		name := buildToolName(api, toolPrefix)
 
-		// Define tool options
-		opts := []mcp.ToolOption{
-			mcp.WithDescription(api.OperationID + " " + api.Summary + " " + api.Description),
-		}
-
 		// Add parameters
 		query_props, path_props, body_props := BuildMCPProperties(api)
+
+		// Build description with input structure hints
+		description := api.OperationID + " " + api.Summary + " " + api.Description
+		var inputHints []string
+		if len(path_props) > 0 {
+			inputHints = append(inputHints, "path parameters in 'pathNames'")
+		}
+		if len(query_props) > 0 {
+			inputHints = append(inputHints, "query parameters in 'searchParams'")
+		}
+		if len(body_props) > 0 {
+			inputHints = append(inputHints, "request body in 'requestBody'")
+		}
+		if len(inputHints) > 0 {
+			description += " Pass " + joinWithAnd(inputHints) + "."
+		}
+
+		// Define tool options
+		opts := []mcp.ToolOption{
+			mcp.WithDescription(description),
+		}
 
 		if len(query_props) > 0 {
 			opts = append(opts, mcp.WithObject("searchParams", mcp.Description("url parameters for the tool"), mcp.Properties(query_props)))

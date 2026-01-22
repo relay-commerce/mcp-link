@@ -273,3 +273,39 @@ func TestBuildMCPProperties_DescriptionPriority(t *testing.T) {
 	require.Equal(t, "integer", limitChild["type"])
 	require.Equal(t, "Maximum number of results.", limitChild["description"])
 }
+
+func TestJoinWithAnd(t *testing.T) {
+	tests := []struct {
+		name     string
+		items    []string
+		expected string
+	}{
+		{
+			name:     "empty",
+			items:    []string{},
+			expected: "",
+		},
+		{
+			name:     "single item",
+			items:    []string{"path parameters in 'pathNames'"},
+			expected: "path parameters in 'pathNames'",
+		},
+		{
+			name:     "two items",
+			items:    []string{"path parameters in 'pathNames'", "query parameters in 'searchParams'"},
+			expected: "path parameters in 'pathNames' and query parameters in 'searchParams'",
+		},
+		{
+			name:     "three items",
+			items:    []string{"path parameters in 'pathNames'", "query parameters in 'searchParams'", "request body in 'requestBody'"},
+			expected: "path parameters in 'pathNames', query parameters in 'searchParams', and request body in 'requestBody'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := joinWithAnd(tt.items)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
