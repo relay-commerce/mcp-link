@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"encoding/base64"
 
@@ -295,11 +296,17 @@ func (s *SSEServer) handleSSE(mcpServer *server.MCPServer, w http.ResponseWriter
 	flusher.Flush()
 
 	// Main event loop - this runs in the HTTP handler goroutine
+	// Send SSE heartbeat comments to prevent proxy idle timeouts
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
 	for {
 		select {
 		case event := <-session.eventQueue:
-			// Write the event to the response
 			fmt.Fprint(w, event)
+			flusher.Flush()
+			heartbeat.Reset(15 * time.Second)
+		case <-heartbeat.C:
+			fmt.Fprint(w, ": heartbeat\n\n")
 			flusher.Flush()
 		case <-r.Context().Done():
 			s.logMessage("[DISCONNECTION] Client connection terminated. Session ID: %s", sessionID)
