@@ -203,7 +203,17 @@ func NewToolHandler(method string, url string, extraHeaders map[string]string) f
 		}
 
 		// Execute the request
-		client := &http.Client{}
+		client := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				// Preserve the original HTTP method across redirects.
+				// By default, Go changes POST to GET on 301/302 redirects.
+				req.Method = via[0].Method
+				for key, values := range via[0].Header {
+					req.Header[key] = values
+				}
+				return nil
+			},
+		}
 		resp, err := client.Do(req)
 		if err != nil {
 			return mcp.NewToolResultText(fmt.Sprintf("Error executing request: %v", err)), nil
