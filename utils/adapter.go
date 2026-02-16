@@ -179,9 +179,11 @@ func NewToolHandler(method string, url string, extraHeaders map[string]string) f
 		}
 
 		// Convert body parameters to JSON for the HTTP request body
+		var jsonParams []byte
 		var reqBody io.Reader = nil
 		if len(bodyParams) > 0 {
-			jsonParams, err := json.Marshal(bodyParams)
+			var err error
+			jsonParams, err = json.Marshal(bodyParams)
 			if err != nil {
 				return mcp.NewToolResultText(fmt.Sprintf("Error marshaling body parameters: %v", err)), nil
 			}
@@ -192,6 +194,15 @@ func NewToolHandler(method string, url string, extraHeaders map[string]string) f
 		req, err := http.NewRequestWithContext(ctx, method, finalURL, reqBody)
 		if err != nil {
 			return mcp.NewToolResultText(fmt.Sprintf("Error creating request: %v", err)), nil
+		}
+
+		// Allow Go's HTTP client to re-create the body on redirects.
+		// Without this, POST/PUT/PATCH bodies are lost after a redirect
+		// (e.g., Django's APPEND_SLASH 301 redirect).
+		if jsonParams != nil {
+			req.GetBody = func() (io.ReadCloser, error) {
+				return io.NopCloser(bytes.NewReader(jsonParams)), nil
+			}
 		}
 
 		// Set headers
